@@ -100,7 +100,7 @@ class Kaggle(commands.Cog):
 
     @kaggle.command()
     async def get(self, ctx, member: discord.Member = None):
-        """Get the Kaggle ID of yourself or another member."""
+        """Get a member's Kaggle profile details with full stats."""
         if member is None:
             member = ctx.author
 
@@ -110,12 +110,69 @@ class Kaggle(commands.Cog):
         row = c.fetchone()
         conn.close()
 
-        if row:
-            kaggle_id, verified = row
-            status = "✅ Verified" if verified else "⚠️ Unverified"
-            await ctx.send(f"👤 {member.mention} → Kaggle ID: **{kaggle_id}** ({status})")
-        else:
+        if not row:
             await ctx.send(f"❌ No Kaggle ID linked for {member.mention}")
+            return
+
+        kaggle_id, verified = row
+        status = "✅ Verified" if verified else "⚠️ Unverified"
+        profile_url = f"https://www.kaggle.com/{kaggle_id}"
+
+        # Fetch Kaggle profile JSON
+        api_url = f"https://www.kaggle.com/{kaggle_id}/json"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(api_url) as resp:
+                if resp.status != 200:
+                    await ctx.send(f"👤 {member.mention} → Kaggle ID: **{kaggle_id}** ({status})\n{profile_url}")
+                    return
+                data = await resp.json()
+
+        # Extract details
+        display_name = data.get("displayName", kaggle_id)
+        join_date = data.get("userSince", "Unknown").split("T")[0]
+        followers = data.get("followersCount", 0)
+        following = data.get("followingCount", 0)
+        competitions = data.get("totalCompetitions", 0)
+        discussions = data.get("totalDiscussionPosts", 0)
+        notebooks = data.get("totalKernels", 0)
+        avatar = data.get("avatarUrl", None)
+        bio = data.get("aboutMe", "No bio provided.")
+
+        # Map performance tier to labels + embed colors
+        tier_map = {
+            1: ("⚪ Novice", discord.Color.light_grey()),
+            2: ("🟢 Contributor", discord.Color.green()),
+            3: ("🟣 Expert", discord.Color.purple()),
+            4: ("🟡 Master", discord.Color.gold()),
+            5: ("🔴 Grandmaster", discord.Color.red())
+        }
+        level_text, embed_color = tier_map.get(
+            data.get("performanceTier", 0), 
+            ("❓ Unknown", discord.Color.dark_grey())
+        )
+
+        # Build embed
+        embed = discord.Embed(
+            title=f"{display_name} ({kaggle_id})",
+            url=profile_url,
+            description=f"{status} Kaggle Profile\n\n*{bio}*",
+            color=embed_color
+        )
+        embed.add_field(name="Level", value=level_text, inline=True)
+        embed.add_field(name="Joined", value=join_date, inline=True)
+        embed.add_field(name="Followers", value=followers, inline=True)
+        embed.add_field(name="Following", value=following, inline=True)
+        embed.add_field(name="Competitions", value=competitions, inline=True)
+        embed.add_field(name="Notebooks", value=notebooks, inline=True)
+        embed.add_field(name="Discussions", value=discussions, inline=True)
+
+        if avatar:
+            embed.set_thumbnail(url=avatar)
+
+        embed.set_footer(text=f"Requested by {ctx.author.display_name}")
+
+        await ctx.send(embed=embed)
+
 
     @kaggle.command()
     @commands.has_permissions(manage_guild=True)
