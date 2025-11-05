@@ -1,3 +1,11 @@
 discord.py
-aiohttp
+python-dotenv
+google-generativeai
 kaggle
+aiohttp
+requests
+pandas
+openpyxl
+odfpy
+pypandoc
+reportlab
