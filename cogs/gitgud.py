@@ -1,84 +1,86 @@
-import os
-import sys
 import discord
 from discord.ext import commands
-import subprocess
-import json
-import aiohttp
+import os
+import random
+from kaggle import api  # Official Kaggle API client
 
 class GitGud(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.groq_api_key = os.getenv("GROQ_API_KEY")
-        self.groq_endpoint = "https://api.groq.com/openai/v1/chat/completions"
+        self.kaggle_username = os.getenv("KAGGLE_USERNAME")
+        self.kaggle_key = os.getenv("KAGGLE_KEY")
 
-    @commands.command(name="gitgud_detail")
-    async def gitgud_detail(self, ctx, competition_id: str):
+    @commands.command(name="gitgud")
+    async def gitgud(self, ctx, *filters):
         """
-        Fetch Kaggle competition details using Kaggle CLI (via -m) and summarize with Groq.
-        Works even if kaggle.exe is not in PATH.
+        Fetch a random Kaggle competition with optional filters.
+
+        Usage:
+          ;gitgud
+          ;gitgud category=featured
+          ;gitgud tag=nlp
+          ;gitgud category=playground tag=vision
         """
+
+        if not self.kaggle_username or not self.kaggle_key:
+            await ctx.send("❌ Kaggle API credentials not configured properly.")
+            return
+
         try:
-            result = subprocess.run(
-                [sys.executable, "-m", "kaggle", "competitions", "view", competition_id, "--json"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=True
+            # --- Parse filters ---
+            params = {}
+            tags = []
+            for f in filters:
+                if "=" in f:
+                    key, value = f.split("=", 1)
+                    key = key.lower().strip()
+                    value = value.lower().strip()
+                    if key == "category":
+                        params["category"] = value
+                    elif key == "tag":
+                        tags.append(value)
+
+            # --- Fetch competitions ---
+            competitions = api.competitions_list(**params)
+
+            # --- Manual tag filter (title/description) ---
+            if tags:
+                competitions = [
+                    c for c in competitions
+                    if any(
+                        t in (c.title.lower() + (c.description or "").lower())
+                        for t in tags
+                    )
+                ]
+
+            if not competitions:
+                await ctx.send("⚠️ No competitions found for those filters.")
+                return
+
+            # --- Pick one ---
+            comp = random.choice(competitions)
+
+            # --- Build URL ---
+            url = f"https://www.kaggle.com/competitions/{comp.ref}"
+
+            # --- Create embed ---
+            embed = discord.Embed(
+                title=comp.title,
+                url=url,
+                description=(comp.description or "No description available."),
+                color=discord.Color.blue()
             )
-            comp_data = json.loads(result.stdout)
-        except subprocess.CalledProcessError as e:
-            await ctx.send(f"⚠️ Kaggle CLI error: {e.stderr}")
-            return
+
+            embed.add_field(name="Category", value=getattr(comp, "category", "N/A") or "N/A", inline=True)
+            embed.add_field(name="Reward", value=getattr(comp, "reward", "N/A") or "N/A", inline=True)
+            embed.add_field(name="Deadline", value=getattr(comp, "deadline", "N/A") or "N/A", inline=False)
+            embed.add_field(name="Organization", value=getattr(comp, "organization_name", "N/A") or "N/A", inline=False)
+            embed.set_footer(text="Fetched from Kaggle")
+
+            await ctx.send(embed=embed)
+
         except Exception as e:
-            await ctx.send(f"⚠️ Error: {e}")
-            return
-
-        title = comp_data.get("title", competition_id)
-        description = comp_data.get("description", "No description available.")
-        reward = comp_data.get("reward", "Unknown")
-        deadline = comp_data.get("deadline", "Unknown")
-        evaluation = comp_data.get("evaluationMetric", "Not specified")
-
-        preview = (description[:1000] + "…") if len(description) > 1000 else description
-        embed = discord.Embed(
-            title=f"📄 Kaggle Competition: {title}",
-            description=preview,
-            url=f"https://www.kaggle.com/competitions/{competition_id}",
-            color=discord.Color.dark_grey()
-        )
-        embed.add_field(name="Reward", value=reward, inline=True)
-        embed.add_field(name="Deadline", value=deadline, inline=True)
-        embed.add_field(name="Evaluation", value=evaluation, inline=True)
-        await ctx.send(embed=embed)
-
-        # --- Summarize with Groq ---
-        headers = {"Authorization": f"Bearer {self.groq_api_key}", "Content-Type": "application/json"}
-        body = {
-            "model": "llama-3.1-8b-instant",
-            "messages": [
-                {"role": "system", "content": "Summarize Kaggle competitions into: Overview, Objective, Data, Evaluation, and Notes."},
-                {"role": "user", "content": description}
-            ],
-            "max_completion_tokens": 500,
-            "temperature": 0.5
-        }
-
-        async with aiohttp.ClientSession() as session:
-            async with session.post(self.groq_endpoint, headers=headers, json=body) as resp:
-                if resp.status != 200:
-                    await ctx.send(f"⚠️ Groq API error {resp.status}")
-                    return
-                data = await resp.json()
-                summary = data["choices"][0]["message"]["content"]
-
-        embed = discord.Embed(
-            title=f"📝 Summarized: {title}",
-            description=summary,
-            url=f"https://www.kaggle.com/competitions/{competition_id}",
-            color=discord.Color.blue()
-        )
-        await ctx.send(embed=embed)
+            await ctx.send(f"⚠️ Something went wrong: `{type(e).__name__}: {e}`")
 
 async def setup(bot):
     await bot.add_cog(GitGud(bot))
