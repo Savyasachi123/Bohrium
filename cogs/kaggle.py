@@ -33,7 +33,7 @@ class Kaggle(commands.Cog):
     @commands.group(invoke_without_command=True)
     async def kaggle(self, ctx):
         """Link or view Kaggle IDs."""
-        await ctx.send("Use `!kaggle identify <username>` to start linking your Kaggle ID.")
+        await ctx.send("Use `;kaggle identify <username>` to start linking your Kaggle ID.")
 
     @kaggle.command()
     async def identify(self, ctx, kaggle_id: str):
