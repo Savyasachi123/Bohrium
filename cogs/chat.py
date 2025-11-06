@@ -54,10 +54,28 @@ class Chat(commands.Cog):
             # Append model turn (role **must** be "model")
             history.append({"role": "model", "parts": [reply]})
 
-            await message.channel.send(
-                reply,
-                allowed_mentions=discord.AllowedMentions.none()
-            )
+            # Smart chunking at sentence or newline boundaries
+            max_len = 1990
+            start = 0
+            while start < len(reply):
+                end = min(start + max_len, len(reply))
+
+                # Try to break at the last newline or period before max_len
+                split_at = max(reply.rfind('\n', start, end), reply.rfind('.', start, end))
+
+                # If neither found in range, just break at max_len
+                if split_at == -1 or split_at <= start:
+                    split_at = end
+
+                chunk = reply[start:split_at].strip()
+                if chunk:
+                    await message.channel.send(
+                        chunk,
+                        allowed_mentions=discord.AllowedMentions.none()
+                    )
+
+                start = split_at + 1
+
         except Exception as e:
             await message.channel.send(f"⚠️ Error: {e}")
 async def setup(bot):
