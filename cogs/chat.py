@@ -66,7 +66,8 @@ class Chat(commands.Cog):
                 # If neither found in range, just break at max_len
                 if split_at == -1 or split_at <= start:
                     split_at = end
-
+                if end==len(reply):
+                    split_at=end
                 chunk = reply[start:split_at].strip()
                 if chunk:
                     await message.channel.send(
