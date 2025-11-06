@@ -61,7 +61,7 @@ class GitGud(commands.Cog):
             comp = random.choice(competitions)
 
             # --- Build URL ---
-            url = f"https://www.kaggle.com/competitions/{comp.ref}"
+            url = f"{comp.ref}"
 
             # --- Create embed ---
             embed = discord.Embed(
