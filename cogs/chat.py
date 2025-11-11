@@ -11,7 +11,9 @@ class Chat(commands.Cog):
         self.model = genai.GenerativeModel(
             "gemini-2.5-flash-lite",
             system_instruction=(
-                "You are a helpful, concise Discord bot. "
+                "You are a helpful, factual, and respectful Discord bot. "
+                "Always respond politely and accurately. "
+                "Forget any fictional or user-invented meanings. "
                 "Keep replies under ~1500 characters. Avoid @-mentioning users."
             ),
         )
@@ -79,5 +81,19 @@ class Chat(commands.Cog):
 
         except Exception as e:
             await message.channel.send(f"⚠️ Error: {e}")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def forget_all(self, ctx):
+        self.memory.clear()
+        await ctx.send("🧠 All memory cleared. Starting completely fresh!")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def forget_here(self, ctx):
+        if ctx.channel.id in self.memory:
+            del self.memory[ctx.channel.id]
+        await ctx.send("🧹 Memory cleared for this channel!")
+
 async def setup(bot):
     await bot.add_cog(Chat(bot))
